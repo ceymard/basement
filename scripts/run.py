@@ -267,6 +267,7 @@ subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 _backup.add_argument('-a', '--archive-name', default='bs-{0:%Y-%m-%d_%H.%M.%S}'.format(datetime.now()), help='name of the archive')
+_backup.add_argument('--prune', '-p', help='prune backup')
 _backup.set_defaults(func=cmd_backup)
 
 _restore = subparsers.add_parser('restore',
