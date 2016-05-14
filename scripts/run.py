@@ -19,6 +19,16 @@ cl = Client(base_url='unix://var/run/docker.sock')
 DIR_BACKUPS = '/backup'
 DIR_REPOSITORIES = '/repositories'
 
+ATTIC_ENV = dict(
+	# Since we can move the backups around without them being in the cache,
+	# we want attic to run without complaining.
+	ATTIC_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK='yes',
+	# We might want to move the repositories around
+	ATTIC_RELOCATED_REPO_ACCESS_IS_OK='yes'
+)
+
+os.environ.update(**ATTIC_ENV)
+
 class BasementException(Exception):
 	pass
 
@@ -69,6 +79,10 @@ def rerun_with_mounts(args):
 	if len(attic_cache) == 0:
 		own_mounts.append(dict(src='/root/.cache/attic', dst='/root/.cache/attic'))
 
+	# This is so our backup timestamps reflect our current timezone
+	own_mounts.append(dict(src='/etc/timezone', dst='/etc/timezone'))
+	own_mounts.append(dict(src='/etc/localtime', dst='/etc/localtime'))
+
 	# the container's mount
 	target_mounts = get_mounts(args.container, prefix=DIR_BACKUPS)
 	all_mounts = own_mounts + target_mounts
@@ -86,12 +100,7 @@ def rerun_with_mounts(args):
 		image=own_config['Image'],
 		name='basement-child-{}'.format(int(time() * 1000)),
 		command=sys.argv[1:],
-		environment=dict(
-			BASEMENT_IS_CHILD='true',
-			# Since we can move the backups around without them being in the cache,
-			# we want attic to run without complaining.
-			ATTIC_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK='yes'
-		),
+		environment=dict(BASEMENT_IS_CHILD='true', **ATTIC_ENV),
 		host_config=cl.create_host_config(binds=binds)
 	)
 
@@ -156,7 +165,12 @@ def handle_args(func):
 			args.backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
 
 		args.repository = path.join(DIR_REPOSITORIES, args.backup_name + '.attic')
-		# args.full_archive = '{}::{}'.format(args.repository, args.archive_name)
+
+		stamp = '{0:%Y-%m-%d@%H.%M.%S}'.format(datetime.now())
+		if hasattr(args, 'archive') and not args.archive:
+			args.archive = '{}-{}'.format(getattr(args, 'prefix', 'bs'), stamp)
+		if hasattr(args, 'archive'):
+			args.full_archive = '{}::{}'.format(args.repository, args.archive)
 
 		return func(args)
 
@@ -184,21 +198,22 @@ def cmd_backup(args):
 		'.'
 	], cwd=DIR_BACKUPS)
 
-# Prune old archives
-	print('pruning repository')
-	run([
-		'attic',
-		'prune',
-		'{}'.format(args.repository),
-		'--prefix',
-		'bs-',
-		'--keep-daily',
-		'14',
-		'--keep-monthly',
-		'3',
-		'--keep-weekly',
-		'4'
-	])
+	# Prune old archives
+	if args.prune:
+		print('pruning repository')
+		run([
+			'attic',
+			'prune',
+			'{}'.format(args.repository),
+			'--prefix',
+			args.prefix,
+			'--keep-daily',
+			'14',
+			'--keep-monthly',
+			'3',
+			'--keep-weekly',
+			'4'
+		])
 
 @handle_args
 def cmd_list(args):
@@ -211,6 +226,13 @@ def cmd_list(args):
 		args.repository
 	])
 
+@handle_args
+def cmd_delete(args):
+	run([
+		'attic',
+		'delete',
+		args.full_archive
+	])
 
 @ensure_mounted
 @handle_args
@@ -266,9 +288,14 @@ parent.add_argument('--backup-name', help='name of the backup to use instead of 
 subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
-_backup.add_argument('-a', '--archive-name', default='bs-{0:%Y-%m-%d_%H.%M.%S}'.format(datetime.now()), help='name of the archive')
+_backup.add_argument('archive', nargs='?', help='name of the archive')
+_backup.add_argument('--prefix', help='prefix that applies on archive names and prunes', default='bs')
 _backup.add_argument('--prune', '-p', help='prune backup')
 _backup.set_defaults(func=cmd_backup)
+
+_delete = subparsers.add_parser('delete', help='remove an archive', parents=[parent])
+_delete.add_argument('archive', help='name of the archive')
+_delete.set_defaults(func=cmd_delete)
 
 _restore = subparsers.add_parser('restore',
 	help='restore a container from a specific archive',
