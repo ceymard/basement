@@ -10,7 +10,7 @@ from time import time
 from os import path
 from docker import Client, errors
 from argparse import ArgumentParser
-from subprocess import run
+from subprocess import run, PIPE, DEVNULL
 
 from attic.repository import Repository
 
@@ -18,6 +18,9 @@ cl = Client(base_url='unix://var/run/docker.sock')
 
 DIR_BACKUPS = '/backup'
 DIR_REPOSITORIES = '/repositories'
+
+class BasementException(Exception):
+	pass
 
 def get_backup_name(args):
 	if args.backup_name: return args.backup_name
@@ -220,12 +223,15 @@ def cmd_restore(args):
 
 	# Ensure that the repository exists
 	if not path.isdir(args.repository):
-		raise Exception('no backup to restore from')
-
-	res = run(['attic', 'info', '{}::{}'])
-	return
+		raise BasementException('no backup to restore from')
 
 	# Ensure that the *archive* exists
+	if run(
+		['attic', 'info', '{}::{}'.format(args.repository, args.archive)],
+		stdout=DEVNULL,
+		stderr=DEVNULL
+	).returncode != 0:
+		raise BasementException('archive {} does not exist for this backup'.format(args.archive))
 
 	if not args.no_remove:
 		# Delete everything in the target mounts to prepare for a clean restore.
@@ -280,4 +286,6 @@ args = parser.parse_args()
 try:
 	args.func(args)
 except errors.NotFound as e:
+	print(e)
+except BasementException as e:
 	print(e)
