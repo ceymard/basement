@@ -14,8 +14,10 @@ from subprocess import run
 
 cl = Client(base_url='unix://var/run/docker.sock')
 
-def get_backup_name(cont):
-	target_infos = cl.inspect_container(cont)
+def get_backup_name(args):
+	if args.backup_name: return args.backup_name
+
+	target_infos = cl.inspect_container(args.container)
 	target_labels = target_infos['Config']['Labels']
 
 	# give a name to the backup, or just infer one from the container's name and id
@@ -64,7 +66,7 @@ def rerun_with_mounts(args):
 	target_mounts = get_mounts(args.container, prefix='/backup')
 	all_mounts = own_mounts + target_mounts
 
-	print('\nRunning backup for {} with volumes :'.format(args.container))
+	print('\nRunning for {} with volumes :'.format(args.container))
 	for m in target_mounts:
 		print('   * {}'.format(m['dst'].replace('/backup', '')))
 	print()
@@ -78,7 +80,7 @@ def rerun_with_mounts(args):
 		name='basement-child-{}'.format(int(time() * 1000)),
 		command=sys.argv[1:],
 		environment=dict(
-			BASEMENT_DO_BACKUP='true',
+			BASEMENT_IS_CHILD='true',
 			# Since we can move the backups around without them being in the cache,
 			# we want attic to run without complaining.
 			ATTIC_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK='yes'
@@ -97,10 +99,10 @@ def rerun_with_mounts(args):
 
 def backup(args):
 
-	# If the environment has a BASEMENT_DO_BACKUP variable set, it means
+	# If the environment has a BASEMENT_IS_CHILD variable set, it means
 	# we are going to run attic. Otherwise, we should prepare the container
 	# for backup.
-	if not os.environ.get('BASEMENT_DO_BACKUP', False):
+	if not os.environ.get('BASEMENT_IS_CHILD', False):
 		return rerun_with_mounts(args)
 
 	containers = None
@@ -108,7 +110,7 @@ def backup(args):
 		containers = get_linked_containers(args.container)
 		# stop all of them
 
-	backup_name = get_backup_name(args.container)
+	backup_name = get_backup_name(args)
 	repository = path.join('/repositories', backup_name + '.attic')
 
 	archive_name = 'bs-{stamp}'.format(
@@ -130,6 +132,7 @@ def backup(args):
 		'.'
 	], cwd='/backup')
 
+	print('pruning repository')
 	run([
 		'attic',
 		'prune',
@@ -150,7 +153,7 @@ def backup(args):
 
 def restore(args):
 
-	if not os.environ.get('BASEMENT_DO_BACKUP', False):
+	if not os.environ.get('BASEMENT_IS_CHILD', False):
 		return rerun_with_mounts(args)
 
 
@@ -159,17 +162,18 @@ def restore(args):
 parser = ArgumentParser()
 parser.add_argument('-v', help='display more informations', action='store_true')
 
+parent = ArgumentParser(add_help=False)
+parent.add_argument('container', help='the name or id of the container to backup')
+parent.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
+parent.add_argument('--backup-name', help='name of the backup to use instead of the computed one')
+
 subparsers = parser.add_subparsers(help='')
 
-parser_backup = subparsers.add_parser('backup', help='backup a container')
-parser_backup.add_argument('container', help='the name or id of the container to backup')
-parser_backup.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
+parser_backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 parser_backup.set_defaults(func=backup)
 
-parser_restore = subparsers.add_parser('restore', help='restore a container from a specific archive')
-parser_restore.add_argument('container', help='the name or id of the container to backup')
+parser_restore = subparsers.add_parser('restore', help='restore a container from a specific archive', parents=[parent])
 parser_restore.add_argument('archive', help='the archive to restore like [<backup_name>::]<archive>')
-parser_restore.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
 parser_restore.add_argument('--no-remove', default=False, action='store_true', help='do not delete everything in the target volumes prior to restoring its contents')
 parser_restore.set_defaults(func=restore)
 
