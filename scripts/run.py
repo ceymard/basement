@@ -32,16 +32,6 @@ os.environ.update(**ATTIC_ENV)
 class BasementException(Exception):
 	pass
 
-def get_backup_name(args):
-	if args.backup_name: return args.backup_name
-
-	target_infos = cl.inspect_container(args.container)
-	target_labels = target_infos['Config']['Labels']
-
-	# give a name to the backup, or just infer one from the container's name and id
-	backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
-	return backup_name
-
 def get_linked_containers(cont):
 	'''
 		Get the list of all the *running* containers using the volumes of `cont`.
@@ -63,7 +53,10 @@ def get_mounts(cont, prefix=''):
 
 def get_binds(cont, prefix=''):
 	info = cl.inspect_container(cont)
-	return list(map(lambda b: b.replace(':', ':' + prefix), info['HostConfig']['Binds']))
+	if 'Mounts' in info:
+		return ['{}:{}{}'.format(m['Source'], prefix, m['Destination']) for m in info['Mounts']]
+	else:
+		return ['{}:{}{}'.format(src, prefix, dst) for dst, src in info['Volumes'].items()]
 
 def rerun_with_mounts(args):
 	'''
@@ -162,6 +155,7 @@ def handle_args(func):
 		if not args.backup_name:
 			target_infos = cl.inspect_container(args.container)
 			target_labels = target_infos['Config']['Labels']
+			if not target_labels: target_labels = dict()
 
 			# give a name to the backup, or just infer one from the container's name and id
 			args.backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
