@@ -5,6 +5,7 @@ pp = pprint.PrettyPrinter(indent=2, compact=True)
 
 import os
 import sys
+import re
 from datetime import datetime
 from time import time
 from os import path
@@ -28,6 +29,38 @@ ATTIC_ENV = dict(
 )
 
 os.environ.update(**ATTIC_ENV)
+
+
+################################################################
+#
+#				Color support
+#
+################################################################
+
+fg = dict(
+	black = '\033[30m',
+	red = '\033[31m',
+	green = '\033[32m',
+	yellow = '\033[33m',
+	blue = '\033[33m',
+	magenta = '\033[33m',
+	cyan = '\033[33m',
+	white = '\033[37m',
+	reset = '\033[0m',
+	bold = '\033[1m'
+)
+is_a_tty = sys.stdout.isatty()
+
+def write(str):
+	str = re.sub(r'%(?P<color>\w+)%', lambda m: fg[m.group('color')] if is_a_tty else '', str)
+	sys.stdout.write(str + '\n')
+
+################################################################
+#
+#				The code.
+#
+################################################################
+
 
 class BasementException(Exception):
 	pass
@@ -77,9 +110,9 @@ def rerun_with_mounts(args):
 
 	all_binds = own_binds + target_binds
 
-	print('\nRunning for {} with volumes :'.format(args.container))
+	write('\nRunning command for container %cyan%{}%reset%'.format(args.container))
 	for b in target_binds:
-		print('   * {}'.format(b))
+		write('   %bold%%green%*%reset% {}'.format(b))
 	print()
 
 	volumes = list(map(
@@ -158,6 +191,7 @@ def handle_args(func):
 			args.backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
 
 		args.repository = path.join(DIR_REPOSITORIES, args.backup_name + '.attic')
+		write('Using repository %green%{}%reset%'.format(args.backup_name))
 
 		stamp = '{0:%Y-%m-%d@%H.%M.%S}'.format(datetime.now())
 		if hasattr(args, 'archive') and not args.archive:
@@ -210,8 +244,6 @@ def cmd_backup(args):
 
 @handle_args
 def cmd_list(args):
-
-	print('\nshowing available archives for backup name {}\n'.format(args.backup_name))
 
 	run([
 		'attic',

@@ -8,6 +8,19 @@ Archives always have names like `bs-yyyy-mm-dd-HH-MM`, and the automatic prune c
 
 The `ATTIC_PRUNE` environment variable contains further options to be passed to `attic`, and is set by default to `--keep-daily 14 --keep-weekly 4 --keep-monthly 2 --prefix bs-`.
 
+# TODO
+
+* Handle all options (prefix, stop-shared) on command line as well as in labels
+* stop all containers (basement.stop-shared --stop-shared)
+* backup all (on label basement.auto-backup=true)
+* passphrase, passfile (label + command-line)
+* auto-prune and prune command
+* backup regularity ? (cron ?)
+
+Nice to have
+* Report generation !
+
+
 # Run
 
 ## Backup a single container
