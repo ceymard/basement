@@ -14,7 +14,7 @@ from subprocess import run, PIPE, DEVNULL
 
 from attic.repository import Repository
 
-cl = Client(base_url='unix://var/run/docker.sock')
+cl = Client(base_url='unix://var/run/docker.sock', version='auto')
 
 DIR_BACKUPS = '/backup'
 DIR_REPOSITORIES = '/repositories'
@@ -61,6 +61,10 @@ def get_mounts(cont, prefix=''):
 	else:
 		return [dict(src=k, dst=prefix + v) for k, v in info['Volumes'].items()]
 
+def get_binds(cont, prefix=''):
+	info = cl.inspect_container(cont)
+	return list(map(lambda b: b.replace(':', ':' + prefix), info['HostConfig']['Binds']))
+
 def rerun_with_mounts(args):
 	'''
 		Create a new disposable container which only purpose is to run attic.
@@ -71,37 +75,35 @@ def rerun_with_mounts(args):
 	own_config = cl.inspect_container(os.environ['HOSTNAME'])
 
 	# things like docker.sock and /repositories
-	own_mounts = get_mounts(os.environ['HOSTNAME'])
+	own_binds = get_binds(os.environ['HOSTNAME'])
 
-	# attic need a cache to work correctly. if not mounted, then just append
-	# /root/.cache/attic to the mount points.
-	attic_cache = list(filter(lambda m: '/root/.cache/attic'.startswith(m['dst']), own_mounts))
-	if len(attic_cache) == 0:
-		own_mounts.append(dict(src='/root/.cache/attic', dst='/root/.cache/attic'))
-
+	own_binds.append('/root/.cache/attic:/root/.cache/attic')
 	# This is so our backup timestamps reflect our current timezone
-	own_mounts.append(dict(src='/etc/timezone', dst='/etc/timezone'))
-	own_mounts.append(dict(src='/etc/localtime', dst='/etc/localtime'))
+	own_binds.append('/etc/timezone:/etc/timezone')
+	own_binds.append('/etc/localtime:/etc/localtime')
 
 	# the container's mount
-	target_mounts = get_mounts(args.container, prefix=DIR_BACKUPS)
-	all_mounts = own_mounts + target_mounts
+	target_binds = get_binds(args.container, prefix='/backup')
+
+	all_binds = own_binds + target_binds
 
 	print('\nRunning for {} with volumes :'.format(args.container))
-	for m in target_mounts:
-		print('   * {}'.format(m['dst'].replace(DIR_BACKUPS, '')))
+	for b in target_binds:
+		print('   * {}'.format(b))
 	print()
 
-	# Create bindings
-	mount_points = list(map(lambda v: v['dst'], all_mounts))
-	binds = {m['src']: m['dst'] for m in all_mounts}
+	volumes = list(map(
+		lambda b: b.split(':')[1],
+		all_binds
+	))
 
 	container_id = cl.create_container(
 		image=own_config['Image'],
 		name='basement-child-{}'.format(int(time() * 1000)),
 		command=sys.argv[1:],
 		environment=dict(BASEMENT_IS_CHILD='true', **ATTIC_ENV),
-		host_config=cl.create_host_config(binds=binds)
+		volumes=volumes,
+		host_config=cl.create_host_config(binds=all_binds)
 	)
 
 	cl.start(container_id)
