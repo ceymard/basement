@@ -41,17 +41,14 @@ def get_linked_containers(cont):
 
 	mounts = map(lambda m: m['Source'], cl.inspect_container(cont)['Mounts'])
 
-def get_mounts(cont, prefix=''):
-	info = cl.inspect_container(cont)
-	if 'Mounts' in info:
-		return list(map(
-			lambda m: dict(src=m['Source'], dst=prefix + m['Destination']),
-			info['Mounts']
-		))
-	else:
-		return [dict(src=k, dst=prefix + v) for k, v in info['Volumes'].items()]
-
 def get_binds(cont, prefix=''):
+	'''
+		Get all the bound volume the given container has access to
+		and return their destination prefixed by `prefix`
+
+		The prefix is used generally with the DIR_BACKUP directory for the
+		target container.
+	'''
 	info = cl.inspect_container(cont)
 	if 'Mounts' in info:
 		return ['{}:{}{}'.format(m['Source'], prefix, m['Destination']) for m in info['Mounts']]
@@ -253,7 +250,7 @@ def cmd_restore(args):
 
 	if not args.no_remove:
 		# Delete everything in the target mounts to prepare for a clean restore.
-		mounts = map(lambda m: DIR_BACKUPS + m['dst'], get_mounts(args.container))
+		mounts = map(lambda m: m.split(':')[1], get_binds(args.container))
 		for m in mounts:
 			# Only empty directories, as file volumes will be overwritten.
 			if path.isdir(m):
