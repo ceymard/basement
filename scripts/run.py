@@ -13,8 +13,6 @@ from docker import Client, errors
 from argparse import ArgumentParser
 from subprocess import run, PIPE, DEVNULL, STDOUT
 
-from attic.repository import Repository
-
 cl = Client(base_url='unix://var/run/docker.sock', version='auto')
 
 DEFAULT_PREFIX = 'bs'
@@ -22,15 +20,15 @@ DEFAULT_PREFIX = 'bs'
 DIR_BACKUPS = '/backup'
 DIR_REPOSITORIES = '/repositories'
 
-ATTIC_ENV = dict(
+BORG_ENV = dict(
 	# Since we can move the backups around without them being in the cache,
-	# we want attic to run without complaining.
-	ATTIC_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK='yes',
+	# we want borg to run without complaining.
+	BORG_UNKNOWN_UNENCRYPTED_REPO_ACCESS_IS_OK='yes',
 	# We might want to move the repositories around
-	ATTIC_RELOCATED_REPO_ACCESS_IS_OK='yes'
+	BORG_RELOCATED_REPO_ACCESS_IS_OK='yes'
 )
 
-os.environ.update(**ATTIC_ENV)
+os.environ.update(**BORG_ENV)
 
 
 ################################################################
@@ -67,9 +65,10 @@ def write(str):
 class BasementException(Exception):
 	pass
 
-def attic(*a, **k):
-	res = run(['attic'] + list(a), stdout=PIPE, stderr=PIPE, **k)
+def borg(*a, **k):
+	res = run(['borg'] + list(a), stdout=PIPE, stderr=PIPE, **k)
 	print(res.stdout.decode('utf-8'))
+	print(res.stderr.decode('utf-8'))
 	return res
 
 def get_running_containers(cont):
@@ -112,7 +111,7 @@ def get_binds(cont, prefix=''):
 
 def rerun_with_mounts(args):
 	'''
-		Create a new disposable container which only purpose is to run attic.
+		Create a new disposable container which only purpose is to run borg.
 		For this, we need to keep our current mounts and add those of the target
 		container to /backup
 	'''
@@ -122,7 +121,7 @@ def rerun_with_mounts(args):
 	# things like docker.sock and /repositories
 	own_binds = get_binds(os.environ['HOSTNAME'])
 
-	own_binds.append('/root/.cache/attic:/root/.cache/attic')
+	own_binds.append('/root/.cache/borg:/root/.cache/borg')
 	# This is so our backup timestamps reflect our current timezone
 	own_binds.append('/etc/timezone:/etc/timezone')
 	own_binds.append('/etc/localtime:/etc/localtime')
@@ -197,7 +196,7 @@ def ensure_mounted(func):
 
 	def wrapper(args, *a, **kw):
 		# If the environment has a BASEMENT_IS_CHILD variable set, it means
-		# we are going to run attic. Otherwise, we should prepare the container
+		# we are going to run borg. Otherwise, we should prepare the container
 		# for backup.
 		if not os.environ.get('BASEMENT_IS_CHILD', False):
 			return rerun_with_mounts(args)
@@ -221,17 +220,17 @@ def handle_args(func):
 
 		if 'basement.passphrase' in target_labels and not args.passphrase:
 			passphrase = target_labels['basement.passphrase']
-			os.environ['ATTIC_PASSPHRASE'] = passphrase
 			args.passphrase = passphrase
 		if args.passphrase:
-			os.environ['ATTIC_PASSPHRASE'] = args.passphrase
+			os.environ['BORG_PASSPHRASE'] = args.passphrase
+			print('passphrase: ', os.environ['BORG_PASSPHRASE'])
 
 		if not args.backup_name:
 
 			# give a name to the backup, or just infer one from the container's name and id
 			args.backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
 
-		args.repository = path.join(DIR_REPOSITORIES, args.backup_name + '.attic')
+		args.repository = path.join(DIR_REPOSITORIES, args.backup_name)
 		write('Using repository %green%{}%reset%'.format(args.backup_name))
 
 		stamp = '{0:%Y-%m-%d@%H.%M.%S}'.format(datetime.now())
@@ -265,44 +264,44 @@ def cmd_backup(args):
 		# fixme : maybe we should create a passphrase of sorts here ?
 		# or at least allow the option
 		if args.passphrase:
-			attic('init', '-e', 'passphrase', args.repository,
+			borg('init', '-e', 'repokey', args.repository,
 				input=args.passphrase.encode('utf-8') + b'\n')
 		else:
-			attic('init', args.repository)
+			borg('init', '-e', 'none', args.repository)
 
 	if not path.isdir(DIR_BACKUPS):
 		write('%yellow%/!\\ This container has no volumes to back up%reset%')
 		return
 
 	# Run the backup
-	attic('create', '--stats', args.full_archive, '.',
+	borg('create', '-v', '--stats', args.full_archive, '.',
 		cwd=DIR_BACKUPS
 	)
 
 	if args.prune:
 		write('pruning repository with {}'.format(args.prune))
-		attic('prune', args.repository, '--prefix', args.prefix + '_', *args.prune.split())
+		borg('prune', args.repository, '--prefix', args.prefix + '_', *args.prune.split())
 
 @handle_args
 def cmd_prune(args):
 	'''
-		attic prune, with options coalesced from the command line as well
+		borg prune, with options coalesced from the command line as well
 		as the basement labels.
 	'''
 
-	attic('prune', args.repository, '--prefix', args.prefix + '_', *args.prune_params.split())
+	borg('prune', args.repository, '--prefix', args.prefix + '_', *args.prune_params.split())
 
 @handle_args
 def cmd_list(args):
 	'''
-		attic list
+		borg list
 	'''
 
-	attic('list', args.repository)
+	borg('list', args.repository)
 
 @handle_args
 def cmd_delete(args):
-	attic('delete',	args.full_archive)
+	borg('delete',	args.full_archive)
 
 @ensure_mounted
 @handle_args
@@ -320,7 +319,7 @@ def cmd_restore(args):
 
 	# Ensure that the *archive* exists
 	if run(
-		['attic', 'info', '{}::{}'.format(args.repository, args.archive)],
+		['borg', 'info', '{}::{}'.format(args.repository, args.archive)],
 		stdout=DEVNULL,
 		stderr=DEVNULL
 	).returncode != 0:
@@ -336,7 +335,7 @@ def cmd_restore(args):
 				run('rm -rf {pth}/* {pth}/.* 2>/dev/null'.format(pth=m), shell=True)
 
 	run([
-		'attic',
+		'borg',
 		'extract',
 		'{}::{}'.format(args.repository, args.archive)
 	], cwd=DIR_BACKUPS)
@@ -374,7 +373,7 @@ subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 _backup.add_argument('archive', nargs='?', help='name of the archive')
-_backup.add_argument('--prune', help='prune options for attic')
+_backup.add_argument('--prune', help='prune options for borg')
 _backup.set_defaults(func=cmd_backup)
 
 _delete = subparsers.add_parser('delete', help='remove an archive', parents=[parent])
@@ -394,7 +393,7 @@ _prune = subparsers.add_parser('prune',
 	help='prune a repository',
 	parents=[parent]
 )
-_prune.add_argument('prune_params', help='attic prune params')
+_prune.add_argument('prune_params', help='borg prune params')
 _prune.set_defaults(func=cmd_prune)
 
 _list = subparsers.add_parser('list', help='list the archives available for a container', parents=[parent])

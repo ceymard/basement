@@ -12,7 +12,7 @@ While volume drivers certainly seem nice, I wanted a simpler and less involved s
 
 Which is why I wanted a tool that would allow me to type `myutil backup my-container` to have it backed up somewhere and `myutil restore my-container from-my-backup` to have all of its volumes completely restored to what I backuped earlier.
 
-Being able to have multiple save points back in time and easily restore to whichever I chose was a big plus, which attic filled with relative grace.
+Being able to have multiple save points back in time and easily restore to whichever I chose was a big plus, which borg filled with relative grace.
 
 # Run
 
@@ -79,7 +79,7 @@ You can always override the prefix by passing `--prefix <my_prefix>` to any comm
 There are three ways you can prune unneeded archives ;
 
 ```bash
-# By passing arguments that attic prune accept in a string
+# By passing arguments that borg prune accept in a string
 basement prune <container> '-d 3 -w 4'
 
 # By passing the prune arguments to backup
