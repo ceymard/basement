@@ -68,10 +68,7 @@ class BasementException(Exception):
 	pass
 
 def attic(*a, **k):
-	suppl = []
-	# if args.passphrase:
-	# 	suppl += ['-e', args.passphrase]
-	return run(['attic'] + list(a) + suppl, **k)
+	return run(['attic'] + list(a), **k)
 
 def get_linked_containers(cont):
 	'''
@@ -128,11 +125,12 @@ def rerun_with_mounts(args):
 		all_binds
 	))
 
+	env = dict(BASEMENT_IS_CHILD='true', **os.environ)
 	container_id = cl.create_container(
 		image=own_config['Image'],
 		name='basement-child-{}'.format(int(time() * 1000)),
 		command=sys.argv[1:],
-		environment=dict(BASEMENT_IS_CHILD='true', **ATTIC_ENV),
+		environment=env,
 		volumes=volumes,
 		host_config=cl.create_host_config(binds=all_binds)
 	)
@@ -325,7 +323,6 @@ parent = ArgumentParser(add_help=False)
 parent.add_argument('container', help='the name or id of the container to backup')
 parent.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
 parent.add_argument('--backup-name', help='name of the backup to use instead of the computed one')
-parent.add_argument('--passphrase', '-p', help='passphrase for the archive')
 parent.add_argument('--prefix', help='prefix that applies on archive names and prunes')
 
 subparsers = parser.add_subparsers(help='')
