@@ -84,10 +84,13 @@ def get_running_containers(cont):
 
 	for c in cl.containers():
 
-		if c['State'] != 'running': continue
+		# infos = cl.inspect_container(c['Id'])
+		# print(infos['Name'])
+
+		if c['Status'][:2] != 'Up': continue
 		if 'basement.child' in (c['Labels'] or dict()): continue
 
-		common_binds = [b for b in get_binds(c) if b.split(':')[0] in binds]
+		common_binds = [b for b in get_binds(c['Id']) if b.split(':')[0] in binds]
 		if len(common_binds) > 0:
 			result.append(c['Id'])
 
