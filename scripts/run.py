@@ -216,6 +216,9 @@ def handle_args(func):
 		target_labels = target_infos['Config']['Labels']
 		if not target_labels: target_labels = dict()
 
+		if 'basement.auto-prune' in target_labels and not getattr(args, 'prune', None):
+			args.prune = target_labels['basement.auto-prune']
+
 		if 'basement.passphrase' in target_labels and not args.passphrase:
 			passphrase = target_labels['basement.passphrase']
 			os.environ['ATTIC_PASSPHRASE'] = passphrase
@@ -235,7 +238,7 @@ def handle_args(func):
 		if not args.prefix:
 			args.prefix = target_labels.get('basement.prefix', DEFAULT_PREFIX)
 		if hasattr(args, 'archive') and not args.archive:
-			args.archive = '{}_{}'.format(getattr(args, 'prefix', 'bs'), stamp)
+			args.archive = '{}_{}'.format(args.prefix, stamp)
 		if hasattr(args, 'archive'):
 			args.full_archive = '{}::{}'.format(args.repository, args.archive)
 
@@ -276,6 +279,10 @@ def cmd_backup(args):
 		cwd=DIR_BACKUPS
 	)
 
+	if args.prune:
+		write('pruning repository with {}'.format(args.prune))
+		attic('prune', args.repository, '--prefix', args.prefix + '_', *args.prune.split())
+
 @handle_args
 def cmd_prune(args):
 	'''
@@ -283,7 +290,7 @@ def cmd_prune(args):
 		as the basement labels.
 	'''
 
-	attic('prune', args.repository, *args.prune_params.split())
+	attic('prune', args.repository, '--prefix', args.prefix + '_', *args.prune_params.split())
 
 @handle_args
 def cmd_list(args):
@@ -367,6 +374,7 @@ subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 _backup.add_argument('archive', nargs='?', help='name of the archive')
+_backup.add_argument('--prune', help='prune options for attic')
 _backup.set_defaults(func=cmd_backup)
 
 _delete = subparsers.add_parser('delete', help='remove an archive', parents=[parent])
