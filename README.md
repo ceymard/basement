@@ -11,7 +11,6 @@ Archives always have names like `bs-yyyy-mm@HH.MM.SS`, and the automatic prune c
 * Handle all options (prefix, stop-shared) on command line as well as in labels
 * stop all containers (basement.stop-shared --stop-shared)
 * backup all (on label basement.auto-backup=true)
-* passphrase, passfile (label + command-line)
 * auto-prune and prune command
 * backup regularity ? (cron ?)
 

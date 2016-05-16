@@ -140,7 +140,7 @@ def rerun_with_mounts(args):
 	# Stream the logs until the container is done
 	logs = cl.logs(container_id, stream=True)
 	for l in logs:
-		sys.stdout.write(l.decode('utf-8'))
+		sys.stdout.write(l if isinstance(l, str) else l.decode('utf-8'))
 
 	cl.remove_container(container_id)
 
@@ -192,6 +192,13 @@ def handle_args(func):
 		target_labels = target_infos['Config']['Labels']
 		if not target_labels: target_labels = dict()
 
+		if 'basement.passphrase' in target_labels and not args.passphrase:
+			passphrase = target_labels['basement.passphrase']
+			os.environ['ATTIC_PASSPHRASE'] = passphrase
+			args.passphrase = passphrase
+		if args.passphrase:
+			os.environ['ATTIC_PASSPHRASE'] = args.passphrase
+
 		if not args.backup_name:
 
 			# give a name to the backup, or just infer one from the container's name and id
@@ -229,7 +236,11 @@ def cmd_backup(args):
 	if not path.isdir(args.repository):
 		# fixme : maybe we should create a passphrase of sorts here ?
 		# or at least allow the option
-		attic('init', args.repository)
+		if args.passphrase:
+			attic('init', '-e', 'passphrase', args.repository,
+				input=args.passphrase.encode('utf-8') + b'\n')
+		else:
+			attic('init', args.repository)
 
 	if not path.isdir(DIR_BACKUPS):
 		write('%yellow%/!\\ This container has no volumes to back up%reset%')
@@ -324,6 +335,7 @@ parent.add_argument('container', help='the name or id of the container to backup
 parent.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
 parent.add_argument('--backup-name', help='name of the backup to use instead of the computed one')
 parent.add_argument('--prefix', help='prefix that applies on archive names and prunes')
+parent.add_argument('--passphrase', help='passphrase to use with backup')
 
 subparsers = parser.add_subparsers(help='')
 
