@@ -274,7 +274,7 @@ def cmd_backup(args):
 		return
 
 	# Run the backup
-	borg('create', '-v', '--stats', args.full_archive, '.',
+	borg('create', '-v', '--stats', '-C', 'lz4', args.full_archive, '.',
 		cwd=DIR_BACKUPS
 	)
 
