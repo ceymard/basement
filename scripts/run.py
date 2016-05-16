@@ -57,13 +57,16 @@ def write(str):
 
 ################################################################
 #
-#				The code.
+#				Helpers and decorators
 #
 ################################################################
 
 
 class BasementException(Exception):
 	pass
+
+def attic(*a, **k):
+	return run(['attic'] + list(a), **k)
 
 def get_linked_containers(cont):
 	'''
@@ -195,7 +198,7 @@ def handle_args(func):
 
 		stamp = '{0:%Y-%m-%d@%H.%M.%S}'.format(datetime.now())
 		if hasattr(args, 'archive') and not args.archive:
-			args.archive = '{}-{}'.format(getattr(args, 'prefix', 'bs'), stamp)
+			args.archive = '{}_{}'.format(getattr(args, 'prefix', 'bs'), stamp)
 		if hasattr(args, 'archive'):
 			args.full_archive = '{}::{}'.format(args.repository, args.archive)
 
@@ -203,61 +206,50 @@ def handle_args(func):
 
 	return wrapper
 
-##################################################################
-##			COMMANDS
+################################################################
+#
+#				Command implementation
+#
+################################################################
 
 @ensure_mounted
 @handle_args
 def cmd_backup(args):
+	'''
+		Backup an archive
+	'''
 
 	# If the backup repository does not exist yet, init it
 	if not path.isdir(args.repository):
 		# fixme : maybe we should create a passphrase of sorts here ?
 		# or at least allow the option
-		run(['attic', 'init', args.repository])
+		attic('init', args.repository)
 
 	# Run the backup
-	run([
-		'attic',
-		'create',
-		'--stats',
-		args.full_archive,
-		'.'
-	], cwd=DIR_BACKUPS)
+	attic('create', '--stats', args.full_archive, '.',
+		cwd=DIR_BACKUPS
+	)
 
-	# Prune old archives
-	if args.prune:
-		print('pruning repository')
-		run([
-			'attic',
-			'prune',
-			'{}'.format(args.repository),
-			'--prefix',
-			args.prefix,
-			'--keep-daily',
-			'14',
-			'--keep-monthly',
-			'3',
-			'--keep-weekly',
-			'4'
-		])
+@handle_args
+def cmd_prune(args):
+	'''
+		attic prune, with options coalesced from the command line as well
+		as the basement labels.
+	'''
+
+	attic('prune', args.repository, *args.prune_params.split())
 
 @handle_args
 def cmd_list(args):
+	'''
+		attic list
+	'''
 
-	run([
-		'attic',
-		'list',
-		args.repository
-	])
+	attic('list', args.repository)
 
 @handle_args
 def cmd_delete(args):
-	run([
-		'attic',
-		'delete',
-		args.full_archive
-	])
+	attic('delete',	args.full_archive)
 
 @ensure_mounted
 @handle_args
@@ -297,9 +289,21 @@ def cmd_restore(args):
 
 
 def cmd_help(args):
+	'''
+		Show The help
+	'''
 	parser.parse_args(['--help'])
 
-###################################################
+################################################################
+################################################################
+################################################################
+
+
+################################################################
+#
+#				Argument Parser
+#
+################################################################
 
 parser = ArgumentParser(prog='basement')
 parser.add_argument('-v', help='display more informations', action='store_true')
@@ -309,13 +313,13 @@ parent = ArgumentParser(add_help=False)
 parent.add_argument('container', help='the name or id of the container to backup')
 parent.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
 parent.add_argument('--backup-name', help='name of the backup to use instead of the computed one')
+parent.add_argument('--passphrase', '-p', help='passphrase for the archive')
 
 subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 _backup.add_argument('archive', nargs='?', help='name of the archive')
 _backup.add_argument('--prefix', help='prefix that applies on archive names and prunes', default='bs')
-_backup.add_argument('--prune', '-p', help='prune backup')
 _backup.set_defaults(func=cmd_backup)
 
 _delete = subparsers.add_parser('delete', help='remove an archive', parents=[parent])
@@ -330,6 +334,13 @@ _restore = subparsers.add_parser('restore',
 _restore.add_argument('archive', help='the archive to restore (use list to see available ones)')
 _restore.add_argument('--no-remove', default=False, action='store_true', help='do not delete everything in the target volumes prior to restoring its contents')
 _restore.set_defaults(func=cmd_restore)
+
+_prune = subparsers.add_parser('prune',
+	help='prune a repository',
+	parents=[parent]
+)
+_prune.add_argument('prune_params', help='attic prune params')
+_prune.set_defaults(func=cmd_prune)
 
 _list = subparsers.add_parser('list', help='list the archives available for a container', parents=[parent])
 _list.set_defaults(func=cmd_list)

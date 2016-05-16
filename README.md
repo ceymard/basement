@@ -4,9 +4,7 @@ A dead-simple solution to backup all volumes of a container and to restore them.
 
 It assumes that all the backups of a give host will reside in a directory ready to be rsync'd somewhere else (like S3 or GCS.)
 
-Archives always have names like `bs-yyyy-mm-dd-HH-MM`, and the automatic prune command only applies on names starting with `bs-` to allow for durable custom backups.
-
-The `ATTIC_PRUNE` environment variable contains further options to be passed to `attic`, and is set by default to `--keep-daily 14 --keep-weekly 4 --keep-monthly 2 --prefix bs-`.
+Archives always have names like `bs-yyyy-mm@HH.MM.SS`, and the automatic prune command only applies on names starting with `bs-` to allow for durable custom backups.
 
 # TODO
 
@@ -23,48 +21,44 @@ Nice to have
 
 # Run
 
+To run basement, it is recommanded to create a small script in `/usr/local/bin` ;
+
+```sh
+#!/bin/bash
+REPOSITORIES=/root/backups
+TAG=latest
+docker run --rm -it -v "$REPOSITORIES:/repositories" -v "/var/run/docker.sock:/var/run/docker.sock" ceymard/basement:$TAG "$@"
+```
+
+From this point on, it will be assumed that such a script is installed on your system as `basement`.
+
 ## Backup a single container
 
 ```sh
-docker run --rm -it -v '/path/to/all/repositories:/repositories' -v '/var/run/docker.sock:/var/run/docker.sock' ceymard/basement backup <container-name>
-```
-
-Example :
-
-```sh
-docker run --rm -it -v '/home/me/backups:/repositories' -v '/var/run/docker.sock:/var/run/docker.sock' ceymard/basement backup mynicecontainer
+basement backup <container-name>
 ```
 
 ## Restore a single container
 
 ```sh
-docker run --rm -it -v '/path/to/all/repositories:/repositories' -v '/var/run/docker.sock:/var/run/docker.sock' ceymard/basement restore <container-name> [<backup-name>::]<archive-name>
+basement restore <container-name> <archive-name>
 ```
 
-Example :
+## List all archives names for a given container
 
 ```sh
-docker run --rm -it -v '/home/me/backups:/repositories' -v '/var/run/docker.sock:/var/run/docker.sock' ceymard/basement restore mycontainer bs-2016-05-13-04-03
+basement list <container-name>
 ```
 
-The backup name can be omitted since we keep track of it, but if you're trying to restore a backup of another container into a new one, you may need to provide it.
+## Backup all tagged containers
 
-# Backup a list of container
+When specifying `auto-backup=true` in a container label, it will be backed up everytime basement is called with `backup-all`
 
-To make the automation via cron (or any other script) easier and the output more readable, it is easier to specify a file.
-
+```bash
+basement backup-all
 ```
-my_container
-another_container: --keep-weekly 2
-*hot_backup_container
-```
-
 
 # How it does it
 
-When launching the basement image, it re-launches itself immediately with the target container's volumes mounted in `/volumes`, from where it starts attic 
+When launching the basement image, it re-launches itself immediately with the target container's volumes mounted in `/backup`, from where it starts attic 
 to backup or restore data.
-
-# Container protection
-
-???
