@@ -17,6 +17,8 @@ from attic.repository import Repository
 
 cl = Client(base_url='unix://var/run/docker.sock', version='auto')
 
+DEFAULT_PREFIX = 'bs'
+
 DIR_BACKUPS = '/backup'
 DIR_REPOSITORIES = '/repositories'
 
@@ -66,7 +68,10 @@ class BasementException(Exception):
 	pass
 
 def attic(*a, **k):
-	return run(['attic'] + list(a), **k)
+	suppl = []
+	# if args.passphrase:
+	# 	suppl += ['-e', args.passphrase]
+	return run(['attic'] + list(a) + suppl, **k)
 
 def get_linked_containers(cont):
 	'''
@@ -185,10 +190,11 @@ def handle_args(func):
 	'''
 	def wrapper(args):
 
+		target_infos = cl.inspect_container(args.container)
+		target_labels = target_infos['Config']['Labels']
+		if not target_labels: target_labels = dict()
+
 		if not args.backup_name:
-			target_infos = cl.inspect_container(args.container)
-			target_labels = target_infos['Config']['Labels']
-			if not target_labels: target_labels = dict()
 
 			# give a name to the backup, or just infer one from the container's name and id
 			args.backup_name = target_labels.get('basement.backup-name', '{}-{}'.format(args.container, target_infos['Id'][:8]))
@@ -197,6 +203,8 @@ def handle_args(func):
 		write('Using repository %green%{}%reset%'.format(args.backup_name))
 
 		stamp = '{0:%Y-%m-%d@%H.%M.%S}'.format(datetime.now())
+		if not args.prefix:
+			args.prefix = target_labels.get('basement.prefix', DEFAULT_PREFIX)
 		if hasattr(args, 'archive') and not args.archive:
 			args.archive = '{}_{}'.format(getattr(args, 'prefix', 'bs'), stamp)
 		if hasattr(args, 'archive'):
@@ -224,6 +232,10 @@ def cmd_backup(args):
 		# fixme : maybe we should create a passphrase of sorts here ?
 		# or at least allow the option
 		attic('init', args.repository)
+
+	if not path.isdir(DIR_BACKUPS):
+		write('%yellow%/!\\ This container has no volumes to back up%reset%')
+		return
 
 	# Run the backup
 	attic('create', '--stats', args.full_archive, '.',
@@ -314,12 +326,12 @@ parent.add_argument('container', help='the name or id of the container to backup
 parent.add_argument('--no-stop', default=False, action='store_true', help='do not stop the container and those that use the same volumes')
 parent.add_argument('--backup-name', help='name of the backup to use instead of the computed one')
 parent.add_argument('--passphrase', '-p', help='passphrase for the archive')
+parent.add_argument('--prefix', help='prefix that applies on archive names and prunes')
 
 subparsers = parser.add_subparsers(help='')
 
 _backup = subparsers.add_parser('backup', help='backup a container', parents=[parent])
 _backup.add_argument('archive', nargs='?', help='name of the archive')
-_backup.add_argument('--prefix', help='prefix that applies on archive names and prunes', default='bs')
 _backup.set_defaults(func=cmd_backup)
 
 _delete = subparsers.add_parser('delete', help='remove an archive', parents=[parent])
