@@ -1,10 +1,10 @@
 # Basement
 
-A dead-simple solution to backup all volumes of a container and to restore them. It can also optionally help to keep track of all the backups of a system, along with their containers and can send mails once done.
+A dead-simple solution to backup all volumes of a container and to restore them.
 
-It assumes that all the backups of a give host will reside in a directory ready to be rsync'd somewhere else (like S3 or GCS.)
+It assumes that all the backups of a given host will reside in a local directory ready to be rsync'd somewhere else (like S3 or GCS.)
 
-Archives always have names like `bs-yyyy-mm@HH.MM.SS`, and the automatic prune command only applies on names starting with `bs-` to allow for durable custom backups.
+Archives always have names like `bs_yyyy-mm@HH.MM.SS`, and the automatic prune command only applies on names starting with `bs_` to allow for durable custom backups.
 
 # TODO
 
@@ -20,14 +20,7 @@ Nice to have
 
 # Run
 
-To run basement, it is recommanded to create a small script in `/usr/local/bin` ;
-
-```sh
-#!/bin/bash
-REPOSITORIES=/root/backups
-TAG=latest
-docker run --rm -it -v "$REPOSITORIES:/repositories" -v "/var/run/docker.sock:/var/run/docker.sock" ceymard/basement:$TAG "$@"
-```
+To run basement, it is recommanded to create a small script in `/usr/local/bin`. An example is provided in the `example` folder.
 
 From this point on, it will be assumed that such a script is installed on your system as `basement`.
 

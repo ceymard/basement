@@ -11,7 +11,7 @@ from time import time
 from os import path
 from docker import Client, errors
 from argparse import ArgumentParser
-from subprocess import run, PIPE, DEVNULL
+from subprocess import run, PIPE, DEVNULL, STDOUT
 
 from attic.repository import Repository
 
@@ -68,16 +68,30 @@ class BasementException(Exception):
 	pass
 
 def attic(*a, **k):
-	return run(['attic'] + list(a), **k)
+	res = run(['attic'] + list(a), stdout=PIPE, stderr=PIPE, **k)
+	print(res.stdout.decode('utf-8'))
+	return res
 
-def get_linked_containers(cont):
+def get_running_containers(cont):
 	'''
 		Get the list of all the *running* containers using the volumes of `cont`.
 
 		It finds them simply by looking at their mount points and seeing if they're running.
 	'''
 
-	mounts = map(lambda m: m['Source'], cl.inspect_container(cont)['Mounts'])
+	result = []
+	binds = [b.split(':')[0] for b in get_binds(cont) if b != '/var/run/docker.sock']
+
+	for c in cl.containers():
+
+		if c['State'] != 'running': continue
+		if 'basement.child' in (c['Labels'] or dict()): continue
+
+		common_binds = [b for b in get_binds(c) if b.split(':')[0] in binds]
+		if len(common_binds) > 0:
+			result.append(c['Id'])
+
+	return result
 
 def get_binds(cont, prefix=''):
 	'''
@@ -87,7 +101,7 @@ def get_binds(cont, prefix=''):
 		The prefix is used generally with the DIR_BACKUP directory for the
 		target container.
 	'''
-	info = cl.inspect_container(cont)
+	info = cl.inspect_container(cont) if isinstance(cont, str) else cont
 	if 'Mounts' in info:
 		return ['{}:{}{}'.format(m['Source'], prefix, m['Destination']) for m in info['Mounts']]
 	else:
@@ -129,6 +143,7 @@ def rerun_with_mounts(args):
 	container_id = cl.create_container(
 		image=own_config['Image'],
 		name='basement-child-{}'.format(int(time() * 1000)),
+		labels={'basement.child': 'true'},
 		command=sys.argv[1:],
 		environment=env,
 		volumes=volumes,
@@ -153,10 +168,16 @@ def ensure_all_stopped(func):
 		containers = None
 
 		if not args.no_stop:
-			containers = get_linked_containers(args.container)
+			containers = get_running_containers(args.container)
+			for c in containers:
+				print('stopping container {}'.format(c))
+				cl.stop(c)
 
 		# perform backup/restore
-		res = func(args)
+		try:
+			res = func(args)
+		except Exception as e:
+			print(e)
 
 		if not args.no_stop:
 			for c in containers:
@@ -227,6 +248,7 @@ def handle_args(func):
 
 @ensure_mounted
 @handle_args
+@ensure_all_stopped
 def cmd_backup(args):
 	'''
 		Backup an archive
@@ -274,6 +296,7 @@ def cmd_delete(args):
 
 @ensure_mounted
 @handle_args
+@ensure_all_stopped
 def cmd_restore(args):
 	'''
 		Restore a given archive into all the container's volumes.
