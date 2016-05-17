@@ -223,7 +223,6 @@ def handle_args(func):
 			args.passphrase = passphrase
 		if args.passphrase:
 			os.environ['BORG_PASSPHRASE'] = args.passphrase
-			print('passphrase: ', os.environ['BORG_PASSPHRASE'])
 
 		if not args.backup_name:
 
