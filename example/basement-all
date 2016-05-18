@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# If you want to backup in one sweep all the containers that have the label basement.auto-backup
+
+for id in `docker ps -f 'label=basement.auto-backup' | tail -n +2 | cut -f 1 -d ' '`; do
+        docker run --rm -i -v '/root/backups:/repositories' -v '/var/run/docker.sock:/var/run/docker.sock' ceymard/basement backup "$id"
+done
