@@ -1,6 +1,6 @@
 # Basement
 
-A dead-simple solution to backup all volumes of a container and to restore them.
+A dead-simple solution to backup all volumes of a container and to restore them. It is based on [borg](https://borgbackup.readthedocs.io/en/stable/).
 
 It assumes that all the backups of a given host will reside in a local directory ready to be rsync'd somewhere else (like S3 or GCS.)
 
@@ -29,13 +29,7 @@ From this point on, it will be assumed that such a script is installed on your s
 ## Backup a single container
 
 ```sh
-basement backup <container-name>
-```
-
-## Restore a single container
-
-```sh
-basement restore <container-name> <archive-name>
+basement backup <container-name> [--prefix <some_prefix>] [--passphrase <a passphrase>]
 ```
 
 ## List all archives names for a given container
@@ -44,19 +38,19 @@ basement restore <container-name> <archive-name>
 basement list <container-name>
 ```
 
-## Backup all tagged containers
+## Restore a single container
 
-When specifying `auto-backup=true` in a container label, it will be backed up everytime basement is called with `backup-all`
-
-```bash
-basement backup-all
+```sh
+basement restore <container-name> <archive-name>
 ```
 
-NOTE: this is not implemented yet.
+## Backup several containers at once
+
+A script is provided in example/ that does some `docker ps` voodoo to get a list of containers having the `basement.auto-backup` label and backuping them all. This is what I use with a cron on the host to backup all the important containers.
 
 # Not stopping a container
 
-By default when backuping or restoring a running container, basement will shut it down, __along with any container using the same mount points__. To prevent such behaviour, use the `--no-stop` flag on the command line.
+By default when backuping or restoring a running container, basement will shut it down, __along with any container using the same mount points as RW__. To prevent such behaviour, use the `--no-stop` flag on the command line.
 
 This behaviour exists for safely backuping databases which usually require to be stopped to avoid data loss because of data not commited to the disk yet.
 
