@@ -109,9 +109,9 @@ def get_binds(cont, prefix=''):
 	'''
 	info = cl.inspect_container(cont) if isinstance(cont, str) else cont
 	if 'Mounts' in info:
-		return ['{}:{}{}'.format(m['Source'], prefix, m['Destination']) for m in info['Mounts']]
+		return ['{}:{}{}'.format(m['Source'], prefix, m['Destination']) for m in info['Mounts'] if m['RW']]
 	else:
-		return ['{}:{}{}'.format(src, prefix, dst) for dst, src in info['Volumes'].items()]
+		return ['{}:{}{}'.format(src, prefix, dst) for dst, src in info['Volumes'].items() if info['VolumesRW'][dst]]
 
 def rerun_with_mounts(args):
 	'''
