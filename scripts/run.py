@@ -51,9 +51,6 @@ fg = dict(
 )
 is_a_tty = sys.stdout.isatty()
 
-# Used with backup all.
-_OVERRIDE_ARGV = None
-
 def write(str):
 	str = re.sub(r'%(?P<color>\w+)%', lambda m: fg[m.group('color')] if is_a_tty else '', str)
 	sys.stdout.write(str + '\n')
@@ -150,7 +147,7 @@ def rerun_with_mounts(args):
 		image=own_config['Image'],
 		name='basement-child-{}'.format(int(time() * 1000)),
 		labels={'basement.child': 'true'},
-		command=_OVERRIDE_ARGV or sys.argv[1:],
+		command=sys.argv[1:],
 		environment=env,
 		volumes=volumes,
 		host_config=cl.create_host_config(binds=all_binds)
@@ -353,28 +350,6 @@ def cmd_help(args):
 	'''
 	parser.parse_args(['--help'])
 
-def cmd_backup_all(args):
-	'''
-		Backup all the containers tagged for auto-backup.
-	'''
-
-	global _OVERRIDE_ARGV
-	to_backup = []
-
-	for c in cl.containers():
-		# infos = cl.inspect_container(c['Id'])
-
-		labels = c['Labels'] or dict()
-		if 'basement.auto-backup' in labels:
-			to_backup.append(cl.inspect_container(c['Id']))
-
-	for c in to_backup:
-		_args = parser.parse_args(['backup', c['Name'][1:]])
-		try:
-			_OVERRIDE_ARGV = ['backup', c['Name'][1:]]
-			cmd_backup(_args)
-		except Exception as e:
-			print(e)
 
 ################################################################
 ################################################################
@@ -427,9 +402,6 @@ _prune.set_defaults(func=cmd_prune)
 
 _list = subparsers.add_parser('list', help='list the archives available for a container', parents=[parent])
 _list.set_defaults(func=cmd_list)
-
-_backup_all = subparsers.add_parser('backup-all', help='backup all the containers marked for backup')
-_backup_all.set_defaults(func=cmd_backup_all)
 
 __args = parser.parse_args()
 
